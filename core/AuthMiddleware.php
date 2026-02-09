@@ -1,13 +1,11 @@
 <?php
 
-require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../config/database.php';
 
-use Firebase\JWT\JWT;
-use Firebase\JWT\Key;
-
-class AuthMiddleware {
-
-  public static function handle() {
+class AuthMiddleware
+{
+  public static function handle()
+  {
     $headers = getallheaders();
 
     if (!isset($headers['Authorization'])) {
@@ -18,19 +16,33 @@ class AuthMiddleware {
       self::unauthorized('Invalid Authorization format');
     }
 
-    $token = $matches[1];
+    $sessionId = $matches[1];
 
-    $config = require __DIR__ . '/../config/jwt.php';
+    $db = Database::connect();
 
-    try {
-      $decoded = JWT::decode($token, new Key($config['secret'], $config['algo']));
-      return $decoded; // contains sub, email, iat, exp
-    } catch (Exception $e) {
-      self::unauthorized('Invalid or expired token');
+    $stmt = $db->prepare("
+            SELECT user_id
+            FROM user_sessions
+            WHERE session_id = ?
+              AND expires_at > NOW()
+            LIMIT 1
+        ");
+
+    $stmt->execute([$sessionId]);
+    $session = $stmt->fetch();
+
+    if (!$session) {
+      self::unauthorized('Invalid or expired session');
     }
+
+    // attach user to request
+    return (object)[
+      'id' => $session->user_id
+    ];
   }
 
-  private static function unauthorized($message) {
+  private static function unauthorized($message)
+  {
     http_response_code(401);
     echo json_encode(['error' => $message]);
     exit;

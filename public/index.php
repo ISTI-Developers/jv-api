@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/cors.php';
+require_once __DIR__ . '/../config/env.php';
 
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $method = $_SERVER['REQUEST_METHOD'];
@@ -16,7 +17,15 @@ switch ($route) {
     case '/auth/login':
         require '../api/auth/login.php';
         break;
-        
+
+    case '/auth/register':
+        require '../api/auth/register.php';
+        break;
+
+    case '/auth/logout':
+        require '../api/auth/logout.php';
+        break;
+
     case '/users/me':
         require '../api/users/me.php';
         break;

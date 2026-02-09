@@ -2,21 +2,27 @@
 
 class Database
 {
-    private static $conn;
+    private static ?PDO $conn = null;
 
-    public static function connect()
+    public static function connect(): PDO
     {
-        if (!self::$conn) {
+        if (self::$conn === null) {
             self::$conn = new PDO(
-                "mysql:host=localhost;dbname=jv-api;charset=utf8mb4",
-                "root",
-                "",
+                sprintf(
+                    "mysql:host=%s;dbname=%s;charset=utf8mb4",
+                    $_ENV['DB_HOST'],
+                    $_ENV['DB_NAME']
+                ),
+                $_ENV['DB_USER'],
+                $_ENV['DB_PASS'],
                 [
                     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_OBJ,
+                    PDO::ATTR_EMULATE_PREPARES => false,
                 ]
             );
         }
+
         return self::$conn;
     }
 }

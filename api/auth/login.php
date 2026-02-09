@@ -3,10 +3,6 @@
 require_once __DIR__ . '/../../vendor/autoload.php';
 require_once __DIR__ . '/../../config/database.php';
 
-use Firebase\JWT\JWT;
-
-$config = require __DIR__ . '/../../config/jwt.php';
-
 $input = json_decode(file_get_contents("php://input"), true);
 
 $email = $input['email'] ?? null;
@@ -30,17 +26,22 @@ if (!$user || !password_verify($password, $user->password)) {
     exit;
 }
 
-$payload = [
-    'sub' => $user->id,
-    'email' => $user->email,
-    'iat' => time(),
-    'exp' => time() + $config['expiry']
-];
+// generate single-session id
+$sessionId = bin2hex(random_bytes(32));
 
-$token = JWT::encode($payload, $config['secret'], $config['algo']);
+// insert / replace session (single login enforced by UNIQUE(user_id))
+$stmt = $db->prepare("
+    INSERT INTO user_sessions (user_id, session_id, created_at, expires_at)
+    VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY))
+    ON DUPLICATE KEY UPDATE
+        session_id = VALUES(session_id),
+        created_at = NOW(),
+        expires_at = VALUES(expires_at)
+");
+$stmt->execute([$user->id, $sessionId]);
 
 echo json_encode([
-    'token' => $token,
+    'session' => $sessionId,
     'user' => [
         'id' => $user->id,
         'email' => $user->email
