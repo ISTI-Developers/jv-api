@@ -21,6 +21,8 @@ class Database
                     PDO::ATTR_EMULATE_PREPARES => false,
                 ]
             );
+
+            self::$conn->exec("SET time_zone = '+08:00'");
         }
 
         return self::$conn;

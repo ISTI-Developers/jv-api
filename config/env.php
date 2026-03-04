@@ -12,3 +12,5 @@ foreach ($lines as $line) {
     [$key, $value] = explode('=', $line, 2);
     $_ENV[$key] = trim($value);
 }
+
+date_default_timezone_set('Asia/Manila');
