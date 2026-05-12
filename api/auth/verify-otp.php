@@ -33,8 +33,7 @@ try {
     $userId = (int)$user['id'];
 
     // fetch latest valid OTP
-    $stmt = $db->prepare("
-        SELECT id, otp_hash, expires_at
+    $stmt = $db->prepare("SELECT id, otp_hash, expires_at
         FROM password_resets
         WHERE user_id = ?
           AND verified_at IS NULL
@@ -55,8 +54,7 @@ try {
     }
 
     // mark OTP as verified
-    $stmt = $db->prepare("
-        UPDATE password_resets
+    $stmt = $db->prepare("UPDATE password_resets
         SET verified_at = NOW()
         WHERE id = ?
     ");

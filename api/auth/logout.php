@@ -3,7 +3,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../core/AuthMiddleware.php';
 
-$requestUser = AuthMiddleware::handle(); // <-- REQUIRED
+$requestUser = AuthMiddleware::handle();
 
 $db = Database::connect();
 

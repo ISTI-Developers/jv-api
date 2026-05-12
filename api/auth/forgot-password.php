@@ -48,22 +48,25 @@ try {
     ");
     $stmt->execute([$userId, $otpHash, $expiresAt]);
 
+    logAudit(
+        $db,
+        $userId,
+        'PASSWORD_RESET_REQUEST',
+        'AUTH',
+        'USER',
+        (string)$userId,
+        null,
+        null,
+        'User requested password reset OTP'
+    );
+
     // send email
-    $mail = new PHPMailer(true);
-    $mail->isSMTP();
-    $mail->Host = $_ENV['SMTP_HOST'];
-    $mail->SMTPAuth = true;
-    $mail->Username = $_ENV['SMTP_USER'];
-    $mail->Password = $_ENV['SMTP_PASS'];
-    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    $mail->Port = $_ENV['SMTP_PORT'];
-
-    $mail->setFrom($_ENV['SMTP_FROM'], 'JV Microsite');
-    $mail->addAddress($email);
-    $mail->Subject = 'Your Password Reset Code';
-    $mail->Body = "Your OTP is: {$otp}\n\nThis code expires in 10 minutes.";
-
-    $mail->send();
+    Mailer::send(
+        $email,
+        'Your Password Reset Code',
+        "Your OTP is: {$otp}\n\nThis code expires in 10 minutes.",
+        ['arojo@unmg.com.ph']
+    );
 
     echo json_encode($genericResponse);
     exit;

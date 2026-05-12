@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../../helpers/audit.php';
 
 try {
     $input = json_decode(file_get_contents('php://input'), true);
@@ -33,8 +34,7 @@ try {
     $userId = (int)$user['id'];
 
     // ensure OTP was verified and not expired
-    $stmt = $db->prepare("
-        SELECT id
+    $stmt = $db->prepare("SELECT id
         FROM password_resets
         WHERE user_id = ?
           AND verified_at IS NOT NULL
@@ -64,6 +64,18 @@ try {
     // invalidate sessions
     $stmt = $db->prepare("DELETE FROM user_sessions WHERE user_id = ?");
     $stmt->execute([$userId]);
+
+    logAudit(
+        $db,
+        $userId,
+        'PASSWORD_RESET_SUCCESS',
+        'AUTH',
+        'USER',
+        (string)$userId,
+        null,
+        null,
+        'User successfully reset password via OTP'
+    );
 
     echo json_encode([
         'message' => 'Password reset successful. Please login.'

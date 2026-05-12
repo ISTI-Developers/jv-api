@@ -31,13 +31,8 @@ try {
             ON u.role_id = r.id
         LEFT JOIN user_profiles up
             ON up.user_id = u.id
-        WHERE u.role_id <> 1
+        WHERE u.role_id = 3
         ORDER BY
-            CASE
-                WHEN u.role_id = 2 THEN 0
-                WHEN u.role_id = 3 THEN 1
-                ELSE 2
-            END,
             up.company_name ASC,
             up.first_name ASC,
             up.last_name ASC,
