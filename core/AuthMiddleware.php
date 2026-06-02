@@ -6,13 +6,22 @@ class AuthMiddleware
 {
   public static function handle()
   {
-    $headers = getallheaders();
+    $headers = function_exists('getallheaders') ? getallheaders() : [];
 
-    if (!isset($headers['Authorization'])) {
+    $authorization =
+      $headers['Authorization']
+      ?? $headers['authorization']
+      ?? $_SERVER['HTTP_AUTHORIZATION']
+      ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
+      ?? $_SERVER['Authorization']
+      ?? $_SERVER['authorization']
+      ?? null;
+
+    if (!$authorization) {
       self::unauthorized('Missing Authorization header');
     }
 
-    if (!preg_match('/Bearer\s(\S+)/', $headers['Authorization'], $matches)) {
+    if (!preg_match('/Bearer\s+(\S+)/', $authorization, $matches)) {
       self::unauthorized('Invalid Authorization format');
     }
 
@@ -21,12 +30,12 @@ class AuthMiddleware
     $db = Database::connect();
 
     $stmt = $db->prepare("
-            SELECT user_id
-            FROM user_sessions
-            WHERE session_id = ?
-              AND expires_at > NOW()
-            LIMIT 1
-        ");
+      SELECT user_id
+      FROM user_sessions
+      WHERE session_id = ?
+        AND expires_at > NOW()
+      LIMIT 1
+    ");
 
     $stmt->execute([$sessionId]);
     $session = $stmt->fetch();
@@ -35,8 +44,7 @@ class AuthMiddleware
       self::unauthorized('Invalid or expired session');
     }
 
-    // attach user to request
-    return (object)[
+    return (object) [
       'id' => $session->user_id
     ];
   }
@@ -44,6 +52,7 @@ class AuthMiddleware
   private static function unauthorized($message)
   {
     http_response_code(401);
+    header('Content-Type: application/json');
     echo json_encode(['error' => $message]);
     exit;
   }

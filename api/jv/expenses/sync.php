@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../../../config/database.php';
 require_once __DIR__ . '/../../middleware/auth.php';
+require_once __DIR__ . '/../../../helpers/audit.php';
 
 header('Content-Type: application/json');
 
@@ -154,6 +155,12 @@ try {
         ");
     }
 
+    $insertedIds = [];
+    $updatedIds = [];
+    $deletedIds = [];
+    $locationIds = [];
+    $moaShareIds = [];
+
     foreach ($expenses as $exp) {
         if (
             !isset($exp['location_id']) ||
@@ -222,6 +229,8 @@ try {
                     $user['id'],
                 ]);
             }
+
+            $updatedIds[] = $id;
         } else {
             $insertStmt->execute([
                 $moaShareId,
@@ -234,7 +243,12 @@ try {
                 $particulars !== '' ? $particulars : null,
                 $amount,
             ]);
+
+            $insertedIds[] = (int) $db->lastInsertId();
         }
+
+        $locationIds[] = $locationId;
+        $moaShareIds[] = $moaShareId;
     }
 
     $toDelete = array_diff($existingIds, $incomingIds);
@@ -256,9 +270,36 @@ try {
             ");
             $deleteStmt->execute([...array_values($toDelete), $user['id']]);
         }
+
+        $deletedIds = array_values(array_map('intval', $toDelete));
     }
 
     $db->commit();
+
+    logAudit(
+        $db,
+        (int) $user['id'],
+        'SYNC_JV_EXPENSES',
+        'JV_EXPENSES',
+        'moa_jv_expenses',
+        (string) $moaId,
+        null,
+        [
+            'moa_id' => $moaId,
+            'is_admin_sync' => $isAdmin,
+            'inserted' => count($insertedIds),
+            'updated' => count(array_unique($updatedIds)),
+            'deleted' => count($deletedIds),
+            'inserted_ids' => $insertedIds,
+            'updated_ids' => array_values(array_unique($updatedIds)),
+            'deleted_ids' => $deletedIds,
+            'location_ids' => array_values(array_unique($locationIds)),
+            'moa_share_ids' => array_values(array_unique($moaShareIds)),
+            'submitted_count' => count($expenses),
+            'existing_count' => count($existingIds),
+        ],
+        'JV expense rows synced'
+    );
 
     echo json_encode([
         'success' => true,

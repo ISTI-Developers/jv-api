@@ -64,7 +64,7 @@ try {
             up.first_name,
             up.last_name,
             up.company_name
-        FROM moa_all_revenue r
+        FROM moa_all_expense r
         LEFT JOIN users u
             ON u.id = r.user_id
         LEFT JOIN user_profiles up

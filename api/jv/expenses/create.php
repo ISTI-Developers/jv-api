@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../../../config/database.php';
 require_once __DIR__ . '/../../middleware/auth.php';
+require_once __DIR__ . '/../../../helpers/audit.php';
 
 header('Content-Type: application/json');
 
@@ -60,6 +61,11 @@ try {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
 
+    $inserted = 0;
+    $insertedIds = [];
+    $locationIds = [];
+    $moaShareIds = [];
+
     foreach ($expenses as $exp) {
         if (
             !isset($exp['location_id']) ||
@@ -102,9 +108,33 @@ try {
             $particulars !== '' ? $particulars : null,
             $amount,
         ]);
+
+        $inserted++;
+        $insertedIds[] = (int) $db->lastInsertId();
+        $locationIds[] = $locationId;
+        $moaShareIds[] = $shareByLocation[$locationId];
     }
 
     $db->commit();
+
+    logAudit(
+        $db,
+        (int) $user['id'],
+        'CREATE_JV_EXPENSES',
+        'JV_EXPENSES',
+        'moa_jv_expenses',
+        (string) $moaId,
+        null,
+        [
+            'moa_id' => $moaId,
+            'inserted' => $inserted,
+            'inserted_ids' => $insertedIds,
+            'location_ids' => array_values(array_unique($locationIds)),
+            'moa_share_ids' => array_values(array_unique($moaShareIds)),
+            'row_count' => count($expenses),
+        ],
+        'JV expense rows created'
+    );
 
     echo json_encode([
         'success' => true,
