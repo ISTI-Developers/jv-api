@@ -2,8 +2,71 @@
 
 require_once __DIR__ . '/../../../config/database.php';
 require_once __DIR__ . '/../../middleware/auth.php';
+require_once __DIR__ . '/../../../helpers/audit.php';
 
 header('Content-Type: application/json');
+
+function fetchMoaAuditSummary(PDO $db, int $moaId): ?array
+{
+    $stmt = $db->prepare("
+        SELECT id, moa_name, soft_deleted, created_at
+        FROM moa
+        WHERE id = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$moaId]);
+    $moa = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$moa) {
+        return null;
+    }
+
+    $stmt = $db->prepare("
+        SELECT id, structure_id, location_name, report_group, soft_deleted
+        FROM moa_locations
+        WHERE moa_id = ?
+        ORDER BY id ASC
+    ");
+    $stmt->execute([$moaId]);
+    $locations = array_map(function ($location) {
+        return [
+            'id' => (int) $location['id'],
+            'structure_id' => $location['structure_id'] !== null ? (int) $location['structure_id'] : null,
+            'location_name' => $location['location_name'],
+            'report_group' => $location['report_group'],
+            'soft_deleted' => (int) $location['soft_deleted'],
+        ];
+    }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+
+    $stmt = $db->prepare("
+        SELECT id, user_id, location_id, share_percentage
+        FROM moa_share
+        WHERE moa_id = ?
+        ORDER BY id ASC
+    ");
+    $stmt->execute([$moaId]);
+    $shares = array_map(function ($share) {
+        return [
+            'id' => (int) $share['id'],
+            'user_id' => (int) $share['user_id'],
+            'location_id' => (int) $share['location_id'],
+            'share_percentage' => (float) $share['share_percentage'],
+        ];
+    }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+
+    return [
+        'id' => (int) $moa['id'],
+        'moa_name' => $moa['moa_name'],
+        'soft_deleted' => (int) $moa['soft_deleted'],
+        'created_at' => $moa['created_at'],
+        'location_count' => count($locations),
+        'location_ids' => array_map(fn($location) => $location['id'], $locations),
+        'share_count' => count($shares),
+        'share_ids' => array_map(fn($share) => $share['id'], $shares),
+        'locations' => $locations,
+        'shares' => $shares,
+    ];
+}
 
 try {
     $db = Database::connect();
@@ -24,6 +87,8 @@ try {
             echo json_encode(['error' => 'Invalid MOA ID']);
             exit;
         }
+
+        $oldValues = fetchMoaAuditSummary($db, $moaId);
 
         $db->beginTransaction();
 
@@ -82,6 +147,24 @@ try {
 
         $db->commit();
 
+        $newValues = fetchMoaAuditSummary($db, $moaId);
+
+        try {
+            logAudit(
+                $db,
+                (int) $admin['id'],
+                'DELETE_MOA',
+                'MOA',
+                'moa',
+                (string) $moaId,
+                $oldValues,
+                $newValues,
+                'Admin soft-deleted MOA'
+            );
+        } catch (Throwable $e) {
+            error_log('Audit log failed: ' . $e->getMessage());
+        }
+
         echo json_encode(['success' => true]);
         exit;
     }
@@ -97,6 +180,7 @@ try {
     }
 
     $moaId = isset($input['moa_id']) ? (int) $input['moa_id'] : null;
+    $isCreate = !$moaId;
     $moaName = trim((string) $input['moa_name']);
     $locations = $input['locations'];
 
@@ -105,6 +189,8 @@ try {
         echo json_encode(['error' => 'Invalid MOA name']);
         exit;
     }
+
+    $oldValues = $isCreate ? null : fetchMoaAuditSummary($db, (int) $moaId);
 
     $db->beginTransaction();
 
@@ -335,6 +421,24 @@ try {
     }
 
     $db->commit();
+
+    $newValues = fetchMoaAuditSummary($db, (int) $moaId);
+
+    try {
+        logAudit(
+            $db,
+            (int) $admin['id'],
+            $isCreate ? 'CREATE_MOA' : 'UPDATE_MOA',
+            'MOA',
+            'moa',
+            (string) $moaId,
+            $oldValues,
+            $newValues,
+            $isCreate ? 'Admin created MOA' : 'Admin updated MOA'
+        );
+    } catch (Throwable $e) {
+        error_log('Audit log failed: ' . $e->getMessage());
+    }
 
     echo json_encode([
         'success' => true,
