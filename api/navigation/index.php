@@ -23,6 +23,8 @@ try {
         LEFT JOIN user_permissions up
             ON up.menu_id = m.id
             AND up.user_id = :user_id
+        LEFT JOIN menus p
+            ON p.id = m.parent_id
         WHERE m.is_active = 1
         AND (
             up.type = 'allow'
@@ -36,8 +38,8 @@ try {
             OR up.type != 'deny'
         )
         ORDER BY
-            COALESCE(m.parent_id, m.id) ASC,
-            m.parent_id IS NOT NULL ASC,
+            COALESCE(p.display_order, m.display_order) ASC,
+            CASE WHEN m.parent_id IS NULL THEN 0 ELSE 1 END ASC,
             m.display_order ASC
     ";
 

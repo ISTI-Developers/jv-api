@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 require_once __DIR__ . '/../../../api/middleware/auth.php';
 require_once __DIR__ . '/../../../core/Password.php';
 require_once __DIR__ . '/../../../core/Mailer.php';
+require_once __DIR__ . '/../../../helpers/audit.php';
 
 try {
     $db = Database::connect();
@@ -63,6 +64,7 @@ try {
     ");
 
     $stmt->execute([$email, $tempHash, $roleId]);
+    $userId = (int) $db->lastInsertId();
 
     $YOUR_LOGIN_URL = "http://localhost:3000/login";
 
@@ -78,6 +80,29 @@ try {
             "Regards,\nJV Microsite Team",
         ['arojo@unmg.com.ph']
     );
+
+    try {
+        logAudit(
+            $db,
+            (int) $admin['id'],
+            'INVITE_USER',
+            'USERS',
+            'users',
+            (string) $userId,
+            null,
+            [
+                'id' => $userId,
+                'email' => $email,
+                'role_id' => $roleId,
+                'force_password_change' => 1,
+                'force_update_profile' => 1,
+                'is_active' => 1,
+            ],
+            'Admin invited user'
+        );
+    } catch (Throwable $e) {
+        error_log('Audit log failed: ' . $e->getMessage());
+    }
 
     echo json_encode(['message' => 'Invitation sent successfully']);
     exit;

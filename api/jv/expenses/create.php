@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../../config/database.php';
 require_once __DIR__ . '/../../middleware/auth.php';
 require_once __DIR__ . '/../../../helpers/audit.php';
+require_once __DIR__ . '/../../../helpers/transaction_log.php';
 
 header('Content-Type: application/json');
 
@@ -33,17 +34,23 @@ try {
     $db->beginTransaction();
 
     $shareStmt = $db->prepare("
-        SELECT id, location_id
-        FROM moa_share
-        WHERE moa_id = ?
-          AND user_id = ?
+        SELECT ms.id, ms.location_id, l.structure_id
+        FROM moa_share ms
+        LEFT JOIN moa_locations l
+            ON l.id = ms.location_id
+           AND l.moa_id = ms.moa_id
+        WHERE ms.moa_id = ?
+          AND ms.user_id = ?
     ");
     $shareStmt->execute([$moaId, $user['id']]);
     $shareRows = $shareStmt->fetchAll(PDO::FETCH_ASSOC);
 
     $shareByLocation = [];
+    $structureByLocation = [];
     foreach ($shareRows as $shareRow) {
-        $shareByLocation[(int) $shareRow['location_id']] = (int) $shareRow['id'];
+        $shareLocationId = (int) $shareRow['location_id'];
+        $shareByLocation[$shareLocationId] = (int) $shareRow['id'];
+        $structureByLocation[$shareLocationId] = $shareRow['structure_id'];
     }
 
     $insertStmt = $db->prepare("
@@ -65,6 +72,7 @@ try {
     $insertedIds = [];
     $locationIds = [];
     $moaShareIds = [];
+    $insertedDetails = [];
 
     foreach ($expenses as $exp) {
         if (
@@ -110,31 +118,74 @@ try {
         ]);
 
         $inserted++;
-        $insertedIds[] = (int) $db->lastInsertId();
+        $expenseId = (int) $db->lastInsertId();
+        $moaShareId = $shareByLocation[$locationId];
+        $insertedIds[] = $expenseId;
         $locationIds[] = $locationId;
-        $moaShareIds[] = $shareByLocation[$locationId];
+        $moaShareIds[] = $moaShareId;
+        $insertedDetails[] = [
+            'id' => $expenseId,
+            'moa_id' => $moaId,
+            'moa_share_id' => $moaShareId,
+            'location_id' => $locationId,
+            'structure_id' => $structureByLocation[$locationId] ?? null,
+            'account_no' => $accountNo,
+            'amount' => $amount,
+            'ref_no' => $refNo,
+            'payee' => $payee,
+            'particulars' => $particulars !== '' ? $particulars : null,
+            'due_date_from' => $dueDateFrom,
+            'due_date_to' => $dueDateTo,
+        ];
     }
 
     $db->commit();
 
-    logAudit(
-        $db,
-        (int) $user['id'],
-        'CREATE_JV_EXPENSES',
-        'JV_EXPENSES',
-        'moa_jv_expenses',
-        (string) $moaId,
-        null,
-        [
+    try {
+        logTransaction($db, [
+            'transaction_type' => 'JV_EXPENSE',
             'moa_id' => $moaId,
-            'inserted' => $inserted,
-            'inserted_ids' => $insertedIds,
-            'location_ids' => array_values(array_unique($locationIds)),
-            'moa_share_ids' => array_values(array_unique($moaShareIds)),
-            'row_count' => count($expenses),
-        ],
-        'JV expense rows created'
-    );
+            'reference_table' => 'moa_jv_expenses',
+            'reference_id' => count($insertedIds) === 1 ? (string) $insertedIds[0] : null,
+            'action' => 'CREATED',
+            'status' => 'SUCCESS',
+            'description' => 'JV expense rows created',
+            'metadata' => [
+                'inserted' => $inserted,
+                'inserted_ids' => $insertedIds,
+                'location_ids' => array_values(array_unique($locationIds)),
+                'moa_share_ids' => array_values(array_unique($moaShareIds)),
+                'row_count' => count($expenses),
+                'expenses' => $insertedDetails,
+            ],
+            'performed_by' => (int) $user['id'],
+        ]);
+    } catch (Throwable $e) {
+        error_log('Transaction log failed: ' . $e->getMessage());
+    }
+
+    try {
+        logAudit(
+            $db,
+            (int) $user['id'],
+            'CREATE_JV_EXPENSES',
+            'JV_EXPENSES',
+            'moa_jv_expenses',
+            (string) $moaId,
+            null,
+            [
+                'moa_id' => $moaId,
+                'inserted' => $inserted,
+                'inserted_ids' => $insertedIds,
+                'location_ids' => array_values(array_unique($locationIds)),
+                'moa_share_ids' => array_values(array_unique($moaShareIds)),
+                'row_count' => count($expenses),
+            ],
+            'JV expense rows created'
+        );
+    } catch (Throwable $e) {
+        error_log('Audit log failed: ' . $e->getMessage());
+    }
 
     echo json_encode([
         'success' => true,

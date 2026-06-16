@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 require_once __DIR__ . '/../../../api/middleware/auth.php';
 require_once __DIR__ . '/../../../core/Password.php';
 require_once __DIR__ . '/../../../core/Mailer.php';
+require_once __DIR__ . '/../../../helpers/audit.php';
 
 try {
     $db = Database::connect();
@@ -46,6 +47,7 @@ try {
     ");
 
     $stmt->execute([$email, $tempHash]);
+    $userId = (int) $db->lastInsertId();
     $YOUR_LOGIN_URL = "http://localhost:3000/login";
 
     Mailer::send(
@@ -60,6 +62,30 @@ try {
             "Regards,\nJV Microsite Team",
         ['arojo@unmg.com']
     );
+
+    try {
+        logAudit(
+            $db,
+            (int) $admin['id'],
+            'CREATE_ADMIN_USER',
+            'USERS',
+            'users',
+            (string) $userId,
+            null,
+            [
+                'id' => $userId,
+                'email' => $email,
+                'role_id' => 2,
+                'force_password_change' => 1,
+                'force_update_profile' => 1,
+                'is_active' => 1,
+            ],
+            'Admin created admin user'
+        );
+    } catch (Throwable $e) {
+        error_log('Audit log failed: ' . $e->getMessage());
+    }
+
     echo json_encode(['message' => 'Admin created and invitation sent successfully']);
     exit;
 } catch (Throwable $e) {

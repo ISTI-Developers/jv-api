@@ -149,17 +149,21 @@ try {
 
         $newValues = fetchMoaAuditSummary($db, $moaId);
 
-        logAudit(
-            $db,
-            (int) $admin['id'],
-            'DELETE_MOA',
-            'MOA',
-            'moa',
-            (string) $moaId,
-            $oldValues,
-            $newValues,
-            'Admin soft-deleted MOA'
-        );
+        try {
+            logAudit(
+                $db,
+                (int) $admin['id'],
+                'DELETE_MOA',
+                'MOA',
+                'moa',
+                (string) $moaId,
+                $oldValues,
+                $newValues,
+                'Admin soft-deleted MOA'
+            );
+        } catch (Throwable $e) {
+            error_log('Audit log failed: ' . $e->getMessage());
+        }
 
         echo json_encode(['success' => true]);
         exit;
@@ -420,17 +424,21 @@ try {
 
     $newValues = fetchMoaAuditSummary($db, (int) $moaId);
 
-    logAudit(
-        $db,
-        (int) $admin['id'],
-        $isCreate ? 'CREATE_MOA' : 'UPDATE_MOA',
-        'MOA',
-        'moa',
-        (string) $moaId,
-        $oldValues,
-        $newValues,
-        $isCreate ? 'Admin created MOA' : 'Admin updated MOA'
-    );
+    try {
+        logAudit(
+            $db,
+            (int) $admin['id'],
+            $isCreate ? 'CREATE_MOA' : 'UPDATE_MOA',
+            'MOA',
+            'moa',
+            (string) $moaId,
+            $oldValues,
+            $newValues,
+            $isCreate ? 'Admin created MOA' : 'Admin updated MOA'
+        );
+    } catch (Throwable $e) {
+        error_log('Audit log failed: ' . $e->getMessage());
+    }
 
     echo json_encode([
         'success' => true,

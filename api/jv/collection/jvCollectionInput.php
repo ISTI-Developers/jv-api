@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../../config/database.php';
 require_once __DIR__ . '/../../middleware/auth.php';
 require_once __DIR__ . '/../../../helpers/audit.php';
+require_once __DIR__ . '/../../../helpers/transaction_log.php';
 
 header('Content-Type: application/json');
 
@@ -106,6 +107,8 @@ try {
     $updatedIds = [];
     $invoiceIds = [];
     $moaSharedIds = [];
+    $structureIds = [];
+    $amountTotal = 0.0;
 
     foreach ($rows as $row) {
         if (!is_array($row)) {
@@ -186,29 +189,67 @@ try {
         if ($moaSharedId !== null) {
             $moaSharedIds[] = $moaSharedId;
         }
+
+        if ($structureId !== null) {
+            $structureIds[] = $structureId;
+        }
+
+        $amountTotal += (float) $amount;
     }
 
     $db->commit();
 
-    logAudit(
-        $db,
-        (int) $user['id'],
-        'SAVE_JV_COLLECTION_INPUT',
-        'COLLECTION',
-        'moa_all_revenue',
-        null,
-        null,
-        [
-            'inserted' => $inserted,
-            'updated' => $updated,
-            'inserted_ids' => $insertedIds,
-            'updated_ids' => $updatedIds,
-            'invoice_ids' => array_values(array_unique($invoiceIds)),
-            'moa_shared_ids' => array_values(array_unique($moaSharedIds)),
-            'row_count' => count($rows),
-        ],
-        'JV collection input rows saved'
-    );
+    try {
+        logTransaction($db, [
+            'transaction_type' => 'COLLECTION',
+            'reference_table' => 'moa_all_revenue',
+            'reference_id' => count($insertedIds) + count($updatedIds) === 1
+                ? (string) (($insertedIds[0] ?? $updatedIds[0]))
+                : null,
+            'action' => 'UPSERTED',
+            'status' => 'SUCCESS',
+            'description' => 'JV collection rows upserted',
+            'amount' => $amountTotal,
+            'metadata' => [
+                'inserted' => $inserted,
+                'updated' => $updated,
+                'inserted_ids' => $insertedIds,
+                'updated_ids' => $updatedIds,
+                'invoice_ids' => array_values(array_unique($invoiceIds)),
+                'structure_ids' => array_values(array_unique($structureIds)),
+                'moa_shared_ids' => array_values(array_unique($moaSharedIds)),
+                'amount_total' => $amountTotal,
+                'row_count' => count($rows),
+            ],
+            'performed_by' => (int) $user['id'],
+        ]);
+    } catch (Throwable $e) {
+        error_log('Transaction log failed: ' . $e->getMessage());
+    }
+
+    try {
+        logAudit(
+            $db,
+            (int) $user['id'],
+            'SAVE_JV_COLLECTION_INPUT',
+            'COLLECTION',
+            'moa_all_revenue',
+            null,
+            null,
+            [
+                'inserted' => $inserted,
+                'updated' => $updated,
+                'inserted_ids' => $insertedIds,
+                'updated_ids' => $updatedIds,
+                'invoice_ids' => array_values(array_unique($invoiceIds)),
+                'moa_shared_ids' => array_values(array_unique($moaSharedIds)),
+                'row_count' => count($rows),
+            ],
+            'JV collection input rows saved'
+        );
+    } catch (Throwable $e) {
+        error_log('Audit log failed: ' . $e->getMessage());
+    }
 
     echo json_encode([
         'success' => true,

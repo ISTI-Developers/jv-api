@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../../../config/database.php';
 require_once __DIR__ . '/../../../api/middleware/auth.php';
+require_once __DIR__ . '/../../../helpers/audit.php';
 
 try {
     $db = Database::connect();
@@ -27,9 +28,14 @@ try {
         exit;
     }
 
-    $stmt = $db->prepare("SELECT user_id FROM user_profiles WHERE user_id = ?");
+    $stmt = $db->prepare("
+        SELECT user_id, first_name, last_name, entity_type, company_name, updated_at
+        FROM user_profiles
+        WHERE user_id = ?
+    ");
     $stmt->execute([$userId]);
-    $exists = $stmt->fetch();
+    $oldProfile = $stmt->fetch(PDO::FETCH_ASSOC);
+    $exists = (bool) $oldProfile;
 
     if ($exists) {
         $stmt = $db->prepare("
@@ -56,6 +62,30 @@ try {
             $entityType,
             $entityType === 'company' ? $companyName : null
         ]);
+    }
+
+    $newProfile = [
+        'user_id' => $userId,
+        'first_name' => $firstName,
+        'last_name' => $lastName,
+        'entity_type' => $entityType,
+        'company_name' => $entityType === 'company' ? $companyName : null,
+    ];
+
+    try {
+        logAudit(
+            $db,
+            (int) $admin['id'],
+            $exists ? 'UPDATE_USER_PROFILE' : 'CREATE_USER_PROFILE',
+            'USERS',
+            'user_profiles',
+            (string) $userId,
+            $oldProfile ?: null,
+            $newProfile,
+            $exists ? 'Admin updated user profile' : 'Admin created user profile'
+        );
+    } catch (Throwable $e) {
+        error_log('Audit log failed: ' . $e->getMessage());
     }
 
     echo json_encode(['success' => true]);

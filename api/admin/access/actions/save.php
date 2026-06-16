@@ -44,25 +44,29 @@ try {
 
         $db->commit();
 
-        logAudit(
-            $db,
-            (int) $admin['id'],
-            'UPDATE_ROLE_ACTION_ACCESS',
-            'ACCESS_CONTROL',
-            'roles',
-            (string) $roleId,
-            [
-                'role_id' => $roleId,
-                'permission_ids' => $oldPermissionIds,
-                'permission_count' => count($oldPermissionIds),
-            ],
-            [
-                'role_id' => $roleId,
-                'permission_ids' => $newPermissionIds,
-                'permission_count' => count($newPermissionIds),
-            ],
-            'Admin updated role action access'
-        );
+        try {
+            logAudit(
+                $db,
+                (int) $admin['id'],
+                'UPDATE_ROLE_ACTION_ACCESS',
+                'ACCESS_CONTROL',
+                'roles',
+                (string) $roleId,
+                [
+                    'role_id' => $roleId,
+                    'permission_ids' => $oldPermissionIds,
+                    'permission_count' => count($oldPermissionIds),
+                ],
+                [
+                    'role_id' => $roleId,
+                    'permission_ids' => $newPermissionIds,
+                    'permission_count' => count($newPermissionIds),
+                ],
+                'Admin updated role action access'
+            );
+        } catch (Throwable $e) {
+            error_log('Audit log failed: ' . $e->getMessage());
+        }
 
         echo json_encode([
             'success' => true,
@@ -122,25 +126,29 @@ try {
 
         $db->commit();
 
-        logAudit(
-            $db,
-            (int) $admin['id'],
-            'UPDATE_USER_ACTION_ACCESS',
-            'ACCESS_CONTROL',
-            'users',
-            (string) $userId,
-            [
-                'user_id' => $userId,
-                'overrides' => $oldOverrides,
-                'override_count' => count($oldOverrides),
-            ],
-            [
-                'user_id' => $userId,
-                'overrides' => $newOverrides,
-                'override_count' => count($newOverrides),
-            ],
-            'Admin updated user action access overrides'
-        );
+        try {
+            logAudit(
+                $db,
+                (int) $admin['id'],
+                'UPDATE_USER_ACTION_ACCESS',
+                'ACCESS_CONTROL',
+                'users',
+                (string) $userId,
+                [
+                    'user_id' => $userId,
+                    'overrides' => $oldOverrides,
+                    'override_count' => count($oldOverrides),
+                ],
+                [
+                    'user_id' => $userId,
+                    'overrides' => $newOverrides,
+                    'override_count' => count($newOverrides),
+                ],
+                'Admin updated user action access overrides'
+            );
+        } catch (Throwable $e) {
+            error_log('Audit log failed: ' . $e->getMessage());
+        }
 
         echo json_encode([
             'success' => true,

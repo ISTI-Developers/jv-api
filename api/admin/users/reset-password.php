@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 require_once __DIR__ . '/../../../api/middleware/auth.php';
 require_once __DIR__ . '/../../../core/Password.php';
 require_once __DIR__ . '/../../../core/Mailer.php';
+require_once __DIR__ . '/../../../helpers/audit.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
 
@@ -29,7 +30,12 @@ try {
         exit;
     }
 
-    $stmt = $db->prepare("SELECT email FROM users WHERE id = ? LIMIT 1");
+    $stmt = $db->prepare("
+        SELECT id, email, force_password_change
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+    ");
     $stmt->execute([$userId]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -54,6 +60,7 @@ try {
     // invalidate sessions
     $stmt = $db->prepare("DELETE FROM user_sessions WHERE user_id = ?");
     $stmt->execute([$userId]);
+    $deletedSessions = $stmt->rowCount();
 
     Mailer::send(
         $email,
@@ -63,6 +70,32 @@ try {
             "You will be forced to change your password after logging in.",
         ['arojo@unmg.com']
     );
+
+    try {
+        logAudit(
+            $db,
+            (int) $admin['id'],
+            'RESET_USER_PASSWORD',
+            'USERS',
+            'users',
+            (string) $userId,
+            [
+                'id' => (int) $user['id'],
+                'email' => $email,
+                'force_password_change' => (int) $user['force_password_change'],
+            ],
+            [
+                'id' => $userId,
+                'email' => $email,
+                'force_password_change' => 1,
+                'sessions_invalidated' => $deletedSessions,
+            ],
+            'Admin reset user password'
+        );
+    } catch (Throwable $e) {
+        error_log('Audit log failed: ' . $e->getMessage());
+    }
+
     echo json_encode(['message' => 'Temporary password sent']);
     exit;
 } catch (Throwable $e) {
