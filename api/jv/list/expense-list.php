@@ -11,23 +11,57 @@ try {
 
     $stmt = $db->prepare("
         SELECT
-            id,
-            moa_shared_id,
-            user_id,
-            invoice_id,
-            account_no,
-            transaction_no,
-            job_number,
-            due_date_from,
-            due_date_to,
-            structure_id,
-            site_id,
-            amount,
-            remarks,
-            group_name,
-            date_created
-        FROM moa_all_expense
-        ORDER BY date_created DESC
+            *
+        FROM (
+            SELECT
+                CONCAT('JV-', A.id) AS external_key,
+                'JV' AS source_type,
+                A.id AS source_id,
+                A.id,
+                A.moa_shared_id,
+                A.account_no,
+                A.user_id,
+                A.ref_no,
+                '' AS job_number,
+                A.due_date_from,
+                A.due_date_to,
+                '' AS structure_id,
+                A.payee,
+                A.particulars,
+                A.amount AS jv_amount,
+                0 AS un_amount,
+                C.group_name
+            FROM moa_jv_expenses A
+            LEFT OUTER JOIN moa_share B
+                ON A.moa_shared_id = B.id
+                AND A.user_id = B.user_id
+            LEFT OUTER JOIN moa_locations C
+                ON B.location_id = C.id
+                AND B.moa_id = C.moa_id
+
+            UNION ALL
+
+            SELECT
+                CONCAT('UNAI-', id) AS external_key,
+                'UNAI' AS source_type,
+                id AS source_id,
+                id,
+                moa_shared_id,
+                account_no,
+                user_id,
+                transaction_no AS ref_no,
+                job_number,
+                due_date_from,
+                due_date_to,
+                structure_id,
+                '' AS payee,
+                '' AS particulars,
+                0 AS jv_amount,
+                amount AS un_amount,
+                group_name
+            FROM moa_all_expense
+        ) X
+        ORDER BY due_date_from DESC, ref_no DESC, id DESC
     ");
 
     $stmt->execute();

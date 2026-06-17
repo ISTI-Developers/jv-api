@@ -7,6 +7,105 @@ require_once __DIR__ . '/../../../helpers/transaction_log.php';
 
 header('Content-Type: application/json');
 
+function expenseStringValue(array $row, string $key): string
+{
+    if (!array_key_exists($key, $row) || $row[$key] === null) {
+        return '';
+    }
+
+    return trim((string) $row[$key]);
+}
+
+function expenseDateValue(array $row, string $key): string
+{
+    $value = expenseStringValue($row, $key);
+
+    if ($value === '') {
+        return '';
+    }
+
+    $timestamp = strtotime($value);
+
+    return $timestamp === false ? $value : date('Y-m-d H:i:s', $timestamp);
+}
+
+function expenseAmountValue(array $row, string $key): string
+{
+    $value = expenseStringValue($row, $key);
+
+    if ($value === '') {
+        return '';
+    }
+
+    $normalized = str_replace(',', '', $value);
+
+    return is_numeric($normalized) ? number_format((float) $normalized, 2, '.', '') : $value;
+}
+
+function generateExpenseSourceHash(array $row): string
+{
+    $basis = [
+        'cCompanyID' => expenseStringValue($row, 'cCompanyID'),
+        'cTranNo' => expenseStringValue($row, 'cTranNo'),
+        'cAcctNo' => expenseStringValue($row, 'cAcctNo'),
+        'cTitle' => expenseStringValue($row, 'cTitle'),
+        'cLocation' => expenseStringValue($row, 'cLocation'),
+        'cGroupName' => expenseStringValue($row, 'cGroupName'),
+        'nAmount' => expenseAmountValue($row, 'nAmount'),
+        'dCreateDate' => expenseDateValue($row, 'dCreateDate'),
+    ];
+
+    return hash('sha256', json_encode($basis, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+}
+
+function normalizeExpenseDate(?string $value): ?string
+{
+    if ($value === null || trim($value) === '') {
+        return null;
+    }
+
+    $timestamp = strtotime($value);
+
+    return $timestamp === false ? trim($value) : date('Y-m-d', $timestamp);
+}
+
+function nullableTrim(array $row, string $key): ?string
+{
+    $value = expenseStringValue($row, $key);
+
+    return $value === '' ? null : $value;
+}
+
+function bindExpenseValue(PDOStatement $stmt, string $name, $value): void
+{
+    if ($value === null) {
+        $stmt->bindValue($name, null, PDO::PARAM_NULL);
+    } elseif (is_int($value)) {
+        $stmt->bindValue($name, $value, PDO::PARAM_INT);
+    } else {
+        $stmt->bindValue($name, $value, PDO::PARAM_STR);
+    }
+}
+
+function getExpenseTableColumns(PDO $db): array
+{
+    $stmt = $db->query("SHOW COLUMNS FROM moa_all_expense");
+    $columns = [];
+
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $column) {
+        $columns[$column['Field']] = true;
+    }
+
+    return $columns;
+}
+
+function onlyExistingExpenseColumns(array $values, array $columns): array
+{
+    return array_filter($values, function ($column) use ($columns) {
+        return isset($columns[$column]);
+    }, ARRAY_FILTER_USE_KEY);
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode([
@@ -44,53 +143,66 @@ try {
 
     $db->beginTransaction();
 
-    $selectStmt = $db->prepare("
-        SELECT id
-        FROM moa_all_expense
-        WHERE transaction_no = ?
-        LIMIT 1
-    ");
+    $expenseColumns = getExpenseTableColumns($db);
+    $hasSourceHash = isset($expenseColumns['source_hash']);
 
-    $insertStmt = $db->prepare("
-        INSERT INTO moa_all_expense (
-            moa_shared_id,
-            user_id,
-            invoice_id,
-            account_no,
-            transaction_no,
-            due_date_from,
-            due_date_to,
-            structure_id,
-            amount,
-            group_name
-        ) VALUES (
-            :moa_shared_id,
-            :user_id,
-            :invoice_id,
-            :account_no,
-            :transaction_no,
-            :due_date_from,
-            :due_date_to,
-            :structure_id,
-            :amount,
-            :group_name
-        )
-    ");
+    $selectStmt = $db->prepare($hasSourceHash
+        ? "SELECT id FROM moa_all_expense WHERE source_hash = ? LIMIT 1"
+        : "SELECT id FROM moa_all_expense WHERE transaction_no = ? LIMIT 1"
+    );
 
-    $updateStmt = $db->prepare("
-        UPDATE moa_all_expense
-        SET
-            moa_shared_id = :moa_shared_id,
-            user_id = :user_id,
-            invoice_id = :invoice_id,
-            account_no = :account_no,
-            due_date_from = :due_date_from,
-            due_date_to = :due_date_to,
-            structure_id = :structure_id,
-            amount = :amount,
-            group_name = :group_name
-        WHERE id = :id
-    ");
+    $insertColumns = onlyExistingExpenseColumns([
+        'moa_shared_id' => null,
+        'user_id' => null,
+        'invoice_id' => null,
+        'account_no' => null,
+        'transaction_no' => null,
+        'due_date_from' => null,
+        'due_date_to' => null,
+        'structure_id' => null,
+        'amount' => null,
+        'remarks' => null,
+        'group_name' => null,
+        'source_hash' => null,
+        'source_company_id' => null,
+        'source_transaction_no' => null,
+        'source_location' => null,
+        'source_module' => null,
+        'source_category' => null,
+        'source_code' => null,
+        'source_name' => null,
+        'source_payee' => null,
+        'source_due_date_from' => null,
+        'source_due_date_to' => null,
+        'source_structure_id' => null,
+        'source_department' => null,
+        'source_employee_id' => null,
+        'source_employee_name' => null,
+        'source_lease_contract_id' => null,
+        'source_main_ref' => null,
+        'source_ref_type' => null,
+        'source_site_owner_name' => null,
+        'source_account_no' => null,
+        'source_title' => null,
+        'source_report_group' => null,
+        'source_group_name' => null,
+        'source_amount' => null,
+        'source_create_date' => null,
+        'source_created_at' => null,
+    ], $expenseColumns);
+
+    $columnNames = array_keys($insertColumns);
+    $insertStmt = $db->prepare(sprintf(
+        "INSERT INTO moa_all_expense (%s) VALUES (%s)",
+        implode(', ', $columnNames),
+        implode(', ', array_map(fn($column) => ':' . $column, $columnNames))
+    ));
+
+    $updateColumns = array_values(array_filter($columnNames, fn($column) => $column !== 'transaction_no'));
+    $updateStmt = $db->prepare(sprintf(
+        "UPDATE moa_all_expense SET %s WHERE id = :id",
+        implode(', ', array_map(fn($column) => $column . ' = :' . $column, $updateColumns))
+    ));
 
     $inserted = 0;
     $updated = 0;
@@ -101,6 +213,7 @@ try {
     $moaSharedIds = [];
     $referenceNos = [];
     $structureIds = [];
+    $sourceHashes = [];
     $amountTotal = 0.0;
 
     foreach ($rows as $row) {
@@ -118,6 +231,7 @@ try {
             continue;
         }
 
+        $sourceHash = generateExpenseSourceHash($row);
         $amount = $row['realized_expense'] ?? null;
 
         if ($amount === null || $amount === '') {
@@ -135,13 +249,8 @@ try {
             ? trim((string) $row['cAcctNo'])
             : null;
 
-        $dueDateFrom = !empty($row['dDueDateFrom'])
-            ? date('Y-m-d', strtotime($row['dDueDateFrom']))
-            : null;
-
-        $dueDateTo = !empty($row['dDueDateTo'])
-            ? date('Y-m-d', strtotime($row['dDueDateTo']))
-            : null;
+        $dueDateFrom = normalizeExpenseDate($row['dDueDateFrom'] ?? null);
+        $dueDateTo = normalizeExpenseDate($row['dDueDateTo'] ?? null);
 
         $structureId = !empty($row['cStructureID'])
             ? trim((string) $row['cStructureID'])
@@ -151,36 +260,68 @@ try {
             ? trim((string) $row['cGroupName'])
             : null;
 
-        $selectStmt->execute([$transactionNo]);
+        $remarks = nullableTrim($row, 'remarks');
+
+        $values = onlyExistingExpenseColumns([
+            'moa_shared_id' => $moaSharedId,
+            'user_id' => (int) $user['id'],
+            'invoice_id' => $invoiceId,
+            'account_no' => $accountNo,
+            'transaction_no' => $transactionNo,
+            'due_date_from' => $dueDateFrom,
+            'due_date_to' => $dueDateTo,
+            'structure_id' => $structureId,
+            'amount' => (float) $amount,
+            'remarks' => $remarks,
+            'group_name' => $groupName,
+            'source_hash' => $sourceHash,
+            'source_company_id' => nullableTrim($row, 'cCompanyID'),
+            'source_transaction_no' => nullableTrim($row, 'cTranNo'),
+            'source_location' => nullableTrim($row, 'cLocation'),
+            'source_module' => nullableTrim($row, 'cModule'),
+            'source_category' => nullableTrim($row, 'cCategory'),
+            'source_code' => nullableTrim($row, 'cCode'),
+            'source_name' => nullableTrim($row, 'cName'),
+            'source_payee' => nullableTrim($row, 'cName'),
+            'source_due_date_from' => $dueDateFrom,
+            'source_due_date_to' => $dueDateTo,
+            'source_structure_id' => nullableTrim($row, 'cStructureID'),
+            'source_department' => nullableTrim($row, 'cDepartment'),
+            'source_employee_id' => nullableTrim($row, 'cEmpID'),
+            'source_employee_name' => nullableTrim($row, 'cEmpName'),
+            'source_lease_contract_id' => nullableTrim($row, 'cleaseContractID'),
+            'source_main_ref' => nullableTrim($row, 'cMainRef'),
+            'source_ref_type' => nullableTrim($row, 'cRefType'),
+            'source_site_owner_name' => nullableTrim($row, 'cSiteOwnerName'),
+            'source_account_no' => nullableTrim($row, 'cAcctNo'),
+            'source_title' => nullableTrim($row, 'cTitle'),
+            'source_report_group' => nullableTrim($row, 'cReportGroup'),
+            'source_group_name' => nullableTrim($row, 'cGroupName'),
+            'source_amount' => expenseAmountValue($row, 'nAmount') !== '' ? expenseAmountValue($row, 'nAmount') : null,
+            'source_create_date' => expenseDateValue($row, 'dCreateDate') !== '' ? expenseDateValue($row, 'dCreateDate') : null,
+            'source_created_at' => expenseDateValue($row, 'dCreateDate') !== '' ? expenseDateValue($row, 'dCreateDate') : null,
+        ], $expenseColumns);
+
+        $selectStmt->execute([$hasSourceHash ? $sourceHash : $transactionNo]);
         $existing = $selectStmt->fetch(PDO::FETCH_ASSOC);
 
         if ($existing) {
             $expenseId = (int) $existing['id'];
             $updateStmt->bindValue(':id', (int) $existing['id'], PDO::PARAM_INT);
-            $updateStmt->bindValue(':moa_shared_id', $moaSharedId, $moaSharedId === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
-            $updateStmt->bindValue(':user_id', (int) $user['id'], PDO::PARAM_INT);
-            $updateStmt->bindValue(':invoice_id', $invoiceId, PDO::PARAM_NULL);
-            $updateStmt->bindValue(':account_no', $accountNo, $accountNo === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
-            $updateStmt->bindValue(':due_date_from', $dueDateFrom, $dueDateFrom === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
-            $updateStmt->bindValue(':due_date_to', $dueDateTo, $dueDateTo === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
-            $updateStmt->bindValue(':structure_id', $structureId, $structureId === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
-            $updateStmt->bindValue(':amount', (float) $amount, PDO::PARAM_STR);
-            $updateStmt->bindValue(':group_name', $groupName, $groupName === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+
+            foreach ($updateColumns as $column) {
+                bindExpenseValue($updateStmt, ':' . $column, $values[$column] ?? null);
+            }
+
             $updateStmt->execute();
 
             $updated++;
             $updatedIds[] = $expenseId;
         } else {
-            $insertStmt->bindValue(':moa_shared_id', $moaSharedId, $moaSharedId === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
-            $insertStmt->bindValue(':user_id', (int) $user['id'], PDO::PARAM_INT);
-            $insertStmt->bindValue(':invoice_id', $invoiceId, PDO::PARAM_NULL);
-            $insertStmt->bindValue(':account_no', $accountNo, $accountNo === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
-            $insertStmt->bindValue(':transaction_no', $transactionNo, PDO::PARAM_STR);
-            $insertStmt->bindValue(':due_date_from', $dueDateFrom, $dueDateFrom === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
-            $insertStmt->bindValue(':due_date_to', $dueDateTo, $dueDateTo === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
-            $insertStmt->bindValue(':structure_id', $structureId, $structureId === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
-            $insertStmt->bindValue(':amount', (float) $amount, PDO::PARAM_STR);
-            $insertStmt->bindValue(':group_name', $groupName, $groupName === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            foreach ($columnNames as $column) {
+                bindExpenseValue($insertStmt, ':' . $column, $values[$column] ?? null);
+            }
+
             $insertStmt->execute();
 
             $inserted++;
@@ -189,6 +330,7 @@ try {
 
         $transactionNos[] = $transactionNo;
         $referenceNos[] = $transactionNo;
+        $sourceHashes[] = $sourceHash;
 
         if ($moaSharedId !== null) {
             $moaSharedIds[] = $moaSharedId;
@@ -222,6 +364,7 @@ try {
                 'inserted_ids' => $insertedIds,
                 'updated_ids' => $updatedIds,
                 'transaction_nos' => array_values(array_unique($transactionNos)),
+                'source_hashes' => array_values(array_unique($sourceHashes)),
                 'reference_nos' => array_values(array_unique($referenceNos)),
                 'structure_ids' => array_values(array_unique($structureIds)),
                 'moa_shared_ids' => array_values(array_unique($moaSharedIds)),
@@ -250,6 +393,7 @@ try {
                 'inserted_ids' => $insertedIds,
                 'updated_ids' => $updatedIds,
                 'transaction_nos' => array_values(array_unique($transactionNos)),
+                'source_hashes' => array_values(array_unique($sourceHashes)),
                 'moa_shared_ids' => array_values(array_unique($moaSharedIds)),
                 'row_count' => count($rows),
             ],

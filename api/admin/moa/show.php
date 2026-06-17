@@ -38,8 +38,11 @@ try {
             l.structure_id,
             l.location_name,
             l.report_group,
+            l.group_name,
+            l.unai_management_fee,
+            l.jv_management_fee,
 
-            ms.id AS moa_share_id,
+            ms.id AS moa_shared_id,
             ms.user_id AS jv_user_id,
             ms.share_percentage,
 
@@ -74,6 +77,9 @@ try {
                 'structure_id' => $row['structure_id'] !== null ? (int) $row['structure_id'] : null,
                 'location_name' => $row['location_name'],
                 'report_group' => $row['report_group'],
+                'group_name' => $row['group_name'],
+                'unai_management_fee' => (float) $row['unai_management_fee'],
+                'jv_management_fee' => (float) $row['jv_management_fee'],
                 'jv_users' => [],
             ];
         }
@@ -84,7 +90,7 @@ try {
             if (!isset($locations[$locationId]['jv_users'][$userId])) {
                 $locations[$locationId]['jv_users'][$userId] = [
                     'id' => $userId,
-                    'moa_share_id' => (int) $row['moa_share_id'],
+                    'moa_shared_id' => (int) $row['moa_shared_id'],
                     'email' => $row['jv_email'],
                     'first_name' => $row['first_name'],
                     'last_name' => $row['last_name'],
@@ -103,7 +109,7 @@ try {
     $stmt = $db->prepare("
         SELECT
             e.id,
-            e.moa_share_id,
+            e.moa_shared_id,
             e.account_no,
             e.user_id,
             e.due_date_from,
@@ -125,7 +131,7 @@ try {
 
         FROM moa_jv_expenses e
         INNER JOIN moa_share ms
-            ON ms.id = e.moa_share_id
+            ON ms.id = e.moa_shared_id
         LEFT JOIN users u
             ON u.id = e.user_id
         LEFT JOIN user_profiles up
@@ -152,7 +158,7 @@ try {
 
         $expenses[$locationId][$accountNo][] = [
             'id' => (int) $row['id'],
-            'moa_share_id' => (int) $row['moa_share_id'],
+            'moa_shared_id' => (int) $row['moa_shared_id'],
             'account_no' => $row['account_no'],
             'user_id' => (int) $row['user_id'],
             'location_id' => $locationId,

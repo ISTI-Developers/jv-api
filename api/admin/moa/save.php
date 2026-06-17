@@ -22,7 +22,15 @@ function fetchMoaAuditSummary(PDO $db, int $moaId): ?array
     }
 
     $stmt = $db->prepare("
-        SELECT id, structure_id, location_name, report_group, soft_deleted
+        SELECT
+            id,
+            structure_id,
+            location_name,
+            report_group,
+            group_name,
+            unai_management_fee,
+            jv_management_fee,
+            soft_deleted
         FROM moa_locations
         WHERE moa_id = ?
         ORDER BY id ASC
@@ -34,6 +42,9 @@ function fetchMoaAuditSummary(PDO $db, int $moaId): ?array
             'structure_id' => $location['structure_id'] !== null ? (int) $location['structure_id'] : null,
             'location_name' => $location['location_name'],
             'report_group' => $location['report_group'],
+            'group_name' => $location['group_name'],
+            'unai_management_fee' => (float) $location['unai_management_fee'],
+            'jv_management_fee' => (float) $location['jv_management_fee'],
             'soft_deleted' => (int) $location['soft_deleted'],
         ];
     }, $stmt->fetchAll(PDO::FETCH_ASSOC));
@@ -66,6 +77,17 @@ function fetchMoaAuditSummary(PDO $db, int $moaId): ?array
         'locations' => $locations,
         'shares' => $shares,
     ];
+}
+
+function normalizeMoaLocationFee($value): float
+{
+    if ($value === null || $value === '') {
+        return 0.0;
+    }
+
+    $normalized = str_replace(',', '', trim((string) $value));
+
+    return is_numeric($normalized) ? (float) $normalized : 0.0;
 }
 
 try {
@@ -117,7 +139,7 @@ try {
 
                 $stmt = $db->prepare("
                     DELETE FROM moa_jv_expenses
-                    WHERE moa_share_id IN ($sharePlaceholders)
+                    WHERE moa_shared_id IN ($sharePlaceholders)
                 ");
                 $stmt->execute($moaShareIds);
             }
@@ -252,8 +274,11 @@ try {
             structure_id,
             location_name,
             report_group,
+            group_name,
+            unai_management_fee,
+            jv_management_fee,
             soft_deleted
-        ) VALUES (?, ?, ?, ?, 0)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)
     ");
 
     $updateLocation = $db->prepare("
@@ -261,6 +286,9 @@ try {
         SET structure_id = ?,
             location_name = ?,
             report_group = ?,
+            group_name = ?,
+            unai_management_fee = ?,
+            jv_management_fee = ?,
             soft_deleted = 0
         WHERE id = ?
           AND moa_id = ?
@@ -273,18 +301,47 @@ try {
             : null;
         $locationName = trim((string) ($loc['location_name'] ?? $loc['name'] ?? ''));
         $reportGroup = trim((string) ($loc['report_group'] ?? ''));
+        $groupName = trim((string) ($loc['group_name'] ?? ''));
+        $unaiManagementFee = normalizeMoaLocationFee($loc['unai_management_fee'] ?? null);
+        $jvManagementFee = normalizeMoaLocationFee($loc['jv_management_fee'] ?? null);
 
         if ($locationName === '') {
             continue;
         }
 
         if ($locId && isset($existingLocationById[$locId])) {
-            $updateLocation->execute([$structureId, $locationName, $reportGroup, $locId, $moaId]);
+            $updateLocation->execute([
+                $structureId,
+                $locationName,
+                $reportGroup,
+                $groupName,
+                $unaiManagementFee,
+                $jvManagementFee,
+                $locId,
+                $moaId,
+            ]);
         } elseif ($structureId && isset($existingLocationByStructureId[$structureId])) {
             $locId = $existingLocationByStructureId[$structureId];
-            $updateLocation->execute([$structureId, $locationName, $reportGroup, $locId, $moaId]);
+            $updateLocation->execute([
+                $structureId,
+                $locationName,
+                $reportGroup,
+                $groupName,
+                $unaiManagementFee,
+                $jvManagementFee,
+                $locId,
+                $moaId,
+            ]);
         } else {
-            $insertLocation->execute([$moaId, $structureId, $locationName, $reportGroup]);
+            $insertLocation->execute([
+                $moaId,
+                $structureId,
+                $locationName,
+                $reportGroup,
+                $groupName,
+                $unaiManagementFee,
+                $jvManagementFee,
+            ]);
             $locId = (int) $db->lastInsertId();
         }
 
@@ -368,7 +425,7 @@ try {
 
                 $stmt = $db->prepare("
                     DELETE FROM moa_jv_expenses
-                    WHERE moa_share_id IN ($sharePlaceholders)
+                    WHERE moa_shared_id IN ($sharePlaceholders)
                 ");
                 $stmt->execute($shareIdsToDelete);
 
@@ -400,7 +457,7 @@ try {
 
             $stmt = $db->prepare("
                 DELETE FROM moa_jv_expenses
-                WHERE moa_share_id IN ($sharePlaceholders)
+                WHERE moa_shared_id IN ($sharePlaceholders)
             ");
             $stmt->execute($shareIdsToDelete);
 

@@ -6,7 +6,7 @@ function logTransaction(PDO $db, array $data): void
         INSERT INTO transaction_logs (
             transaction_type,
             moa_id,
-            moa_share_id,
+            moa_shared_id,
             structure_id,
             account_no,
             amount,
@@ -21,7 +21,7 @@ function logTransaction(PDO $db, array $data): void
         ) VALUES (
             :transaction_type,
             :moa_id,
-            :moa_share_id,
+            :moa_shared_id,
             :structure_id,
             :account_no,
             :amount,
@@ -41,7 +41,7 @@ function logTransaction(PDO $db, array $data): void
     $stmt->execute([
         ':transaction_type' => $data['transaction_type'],
         ':moa_id' => $data['moa_id'] ?? null,
-        ':moa_share_id' => $data['moa_share_id'] ?? null,
+        ':moa_shared_id' => $data['moa_shared_id'] ?? null,
         ':structure_id' => $data['structure_id'] ?? null,
         ':account_no' => $data['account_no'] ?? null,
         ':amount' => $data['amount'] ?? null,

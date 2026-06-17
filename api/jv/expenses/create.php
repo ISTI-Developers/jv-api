@@ -55,7 +55,7 @@ try {
 
     $insertStmt = $db->prepare("
         INSERT INTO moa_jv_expenses (
-            moa_share_id,
+            moa_shared_id,
             account_no,
             user_id,
             due_date_from,
@@ -126,7 +126,7 @@ try {
         $insertedDetails[] = [
             'id' => $expenseId,
             'moa_id' => $moaId,
-            'moa_share_id' => $moaShareId,
+            'moa_shared_id' => $moaShareId,
             'location_id' => $locationId,
             'structure_id' => $structureByLocation[$locationId] ?? null,
             'account_no' => $accountNo,
@@ -154,7 +154,7 @@ try {
                 'inserted' => $inserted,
                 'inserted_ids' => $insertedIds,
                 'location_ids' => array_values(array_unique($locationIds)),
-                'moa_share_ids' => array_values(array_unique($moaShareIds)),
+                'moa_shared_ids' => array_values(array_unique($moaShareIds)),
                 'row_count' => count($expenses),
                 'expenses' => $insertedDetails,
             ],
@@ -178,7 +178,7 @@ try {
                 'inserted' => $inserted,
                 'inserted_ids' => $insertedIds,
                 'location_ids' => array_values(array_unique($locationIds)),
-                'moa_share_ids' => array_values(array_unique($moaShareIds)),
+                'moa_shared_ids' => array_values(array_unique($moaShareIds)),
                 'row_count' => count($expenses),
             ],
             'JV expense rows created'

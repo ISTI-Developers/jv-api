@@ -76,7 +76,7 @@ try {
             l.location_name,
             l.report_group,
 
-            ms.id AS moa_share_id,
+            ms.id AS moa_shared_id,
             ms.user_id AS jv_user_id,
             ms.share_percentage,
 
@@ -124,7 +124,7 @@ try {
             if (!isset($locations[$locationId]['jv_users'][$jvUserId])) {
                 $locations[$locationId]['jv_users'][$jvUserId] = [
                     'id' => $jvUserId,
-                    'moa_share_id' => (int) $row['moa_share_id'],
+                    'moa_shared_id' => (int) $row['moa_shared_id'],
                     'email' => $row['jv_email'],
                     'first_name' => $row['first_name'],
                     'last_name' => $row['last_name'],
@@ -144,7 +144,7 @@ try {
     $expenseSql = "
         SELECT
             e.id,
-            e.moa_share_id,
+            e.moa_shared_id,
             e.account_no,
             e.user_id,
             e.due_date_from,
@@ -168,7 +168,7 @@ try {
 
         FROM moa_jv_expenses e
         INNER JOIN moa_share ms
-            ON ms.id = e.moa_share_id
+            ON ms.id = e.moa_shared_id
         INNER JOIN users u
             ON u.id = e.user_id
         LEFT JOIN roles r
@@ -210,7 +210,7 @@ try {
 
         $expenses[$locId][$accountNo][] = [
             'id' => (int) $row['id'],
-            'moa_share_id' => (int) $row['moa_share_id'],
+            'moa_shared_id' => (int) $row['moa_shared_id'],
             'user_id' => (int) $row['user_id'],
             'account_no' => $row['account_no'],
             'share_percentage' => (float) $row['share_percentage'],

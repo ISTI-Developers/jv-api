@@ -60,7 +60,7 @@ try {
         $params[':search_company_name'] = $searchValue;
     }
 
-    foreach (['moa_id', 'moa_share_id', 'performed_by'] as $field) {
+    foreach (['moa_id', 'moa_shared_id', 'performed_by'] as $field) {
         if (isset($_GET[$field]) && $_GET[$field] !== '') {
             $value = filter_var($_GET[$field], FILTER_VALIDATE_INT);
             if ($value !== false && $value > 0) {
@@ -119,7 +119,7 @@ try {
             tl.id,
             tl.transaction_type,
             tl.moa_id,
-            tl.moa_share_id,
+            tl.moa_shared_id,
             tl.structure_id,
             tl.account_no,
             tl.amount,
@@ -159,7 +159,7 @@ try {
             'id' => (int) $row['id'],
             'transaction_type' => $row['transaction_type'],
             'moa_id' => $row['moa_id'] !== null ? (int) $row['moa_id'] : null,
-            'moa_share_id' => $row['moa_share_id'] !== null ? (int) $row['moa_share_id'] : null,
+            'moa_shared_id' => $row['moa_shared_id'] !== null ? (int) $row['moa_shared_id'] : null,
             'structure_id' => $row['structure_id'],
             'account_no' => $row['account_no'],
             'amount' => $row['amount'] !== null ? (float) $row['amount'] : null,

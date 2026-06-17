@@ -87,7 +87,7 @@ try {
         $stmt = $db->prepare("
             SELECT
                 e.id,
-                e.moa_share_id,
+                e.moa_shared_id,
                 e.account_no,
                 e.user_id,
                 e.due_date_from,
@@ -101,18 +101,18 @@ try {
                 l.structure_id
             FROM moa_jv_expenses e
             INNER JOIN moa_share ms
-                ON ms.id = e.moa_share_id
+                ON ms.id = e.moa_shared_id
             LEFT JOIN moa_locations l
                 ON l.id = ms.location_id
                AND l.moa_id = ms.moa_id
-            WHERE e.moa_share_id IN ($placeholders)
+            WHERE e.moa_shared_id IN ($placeholders)
         ");
         $stmt->execute($allowedShareIds);
     } else {
         $stmt = $db->prepare("
             SELECT
                 e.id,
-                e.moa_share_id,
+                e.moa_shared_id,
                 e.account_no,
                 e.user_id,
                 e.due_date_from,
@@ -126,11 +126,11 @@ try {
                 l.structure_id
             FROM moa_jv_expenses e
             INNER JOIN moa_share ms
-                ON ms.id = e.moa_share_id
+                ON ms.id = e.moa_shared_id
             LEFT JOIN moa_locations l
                 ON l.id = ms.location_id
                AND l.moa_id = ms.moa_id
-            WHERE e.moa_share_id IN ($placeholders)
+            WHERE e.moa_shared_id IN ($placeholders)
               AND e.user_id = ?
         ");
         $stmt->execute([...$allowedShareIds, $user['id']]);
@@ -145,11 +145,11 @@ try {
     foreach ($existingRows as $row) {
         $expenseId = (int) $row['id'];
         $existingIds[] = $expenseId;
-        $existingMap[$expenseId] = (int) $row['moa_share_id'];
+        $existingMap[$expenseId] = (int) $row['moa_shared_id'];
         $existingDetails[$expenseId] = [
             'id' => $expenseId,
             'moa_id' => (int) $row['moa_id'],
-            'moa_share_id' => (int) $row['moa_share_id'],
+            'moa_shared_id' => (int) $row['moa_shared_id'],
             'location_id' => (int) $row['location_id'],
             'structure_id' => $row['structure_id'],
             'account_no' => $row['account_no'],
@@ -167,7 +167,7 @@ try {
 
     $insertStmt = $db->prepare("
         INSERT INTO moa_jv_expenses (
-            moa_share_id,
+            moa_shared_id,
             account_no,
             user_id,
             due_date_from,
@@ -183,7 +183,7 @@ try {
         $updateStmt = $db->prepare("
             UPDATE moa_jv_expenses
             SET
-                moa_share_id = ?,
+                moa_shared_id = ?,
                 account_no = ?,
                 due_date_from = ?,
                 due_date_to = ?,
@@ -197,7 +197,7 @@ try {
         $updateStmt = $db->prepare("
             UPDATE moa_jv_expenses
             SET
-                moa_share_id = ?,
+                moa_shared_id = ?,
                 account_no = ?,
                 due_date_from = ?,
                 due_date_to = ?,
@@ -295,7 +295,7 @@ try {
                 'new' => [
                     'id' => $id,
                     'moa_id' => $moaId,
-                    'moa_share_id' => $moaShareId,
+                    'moa_shared_id' => $moaShareId,
                     'location_id' => $locationId,
                     'structure_id' => $structureByLocation[$locationId] ?? null,
                     'account_no' => $accountNo,
@@ -326,7 +326,7 @@ try {
             $insertedDetails[] = [
                 'id' => $expenseId,
                 'moa_id' => $moaId,
-                'moa_share_id' => $moaShareId,
+                'moa_shared_id' => $moaShareId,
                 'location_id' => $locationId,
                 'structure_id' => $structureByLocation[$locationId] ?? null,
                 'account_no' => $accountNo,
@@ -393,7 +393,7 @@ try {
                 'updated_ids' => array_values(array_unique($updatedIds)),
                 'deleted_ids' => $deletedIds,
                 'location_ids' => array_values(array_unique($locationIds)),
-                'moa_share_ids' => array_values(array_unique($moaShareIds)),
+                'moa_shared_ids' => array_values(array_unique($moaShareIds)),
                 'submitted_count' => count($expenses),
                 'existing_count' => count($existingIds),
                 'inserted_rows' => $insertedDetails,
@@ -425,7 +425,7 @@ try {
                 'updated_ids' => array_values(array_unique($updatedIds)),
                 'deleted_ids' => $deletedIds,
                 'location_ids' => array_values(array_unique($locationIds)),
-                'moa_share_ids' => array_values(array_unique($moaShareIds)),
+                'moa_shared_ids' => array_values(array_unique($moaShareIds)),
                 'submitted_count' => count($expenses),
                 'existing_count' => count($existingIds),
             ],
