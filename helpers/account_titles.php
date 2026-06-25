@@ -1,13 +1,14 @@
 <?php
 
 const ACCOUNT_TITLES_SOURCE_URL = 'https://api.unmg.com.ph/jv/expenses/category';
+const REVENUE_ACCOUNT_TITLES_SOURCE_URL = 'https://api.unmg.com.ph/jv/revenue/category';
 
-function fetchExternalAccountTitles(): array
+function fetchExternalAccountTitles(string $sourceUrl = ACCOUNT_TITLES_SOURCE_URL): array
 {
     $response = false;
 
     if (function_exists('curl_init')) {
-        $curl = curl_init(ACCOUNT_TITLES_SOURCE_URL);
+        $curl = curl_init($sourceUrl);
 
         curl_setopt_array($curl, [
             CURLOPT_RETURNTRANSFER => true,
@@ -35,7 +36,7 @@ function fetchExternalAccountTitles(): array
             ],
         ]);
 
-        $response = file_get_contents(ACCOUNT_TITLES_SOURCE_URL, false, $context);
+        $response = file_get_contents($sourceUrl, false, $context);
 
         if ($response === false) {
             throw new RuntimeException('Unable to fetch external account titles source');

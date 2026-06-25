@@ -147,8 +147,8 @@ try {
             e.moa_shared_id,
             e.account_no,
             e.user_id,
-            e.due_date_from,
-            e.due_date_to,
+            e.input_source,
+            e.due_date,
             e.ref_no,
             e.payee,
             e.particulars,
@@ -176,6 +176,7 @@ try {
         LEFT JOIN user_profiles up
             ON up.user_id = u.id
         WHERE ms.moa_id = ?
+          AND e.input_source = 'JV'
     ";
 
     if (!$isAdmin) {
@@ -212,10 +213,10 @@ try {
             'id' => (int) $row['id'],
             'moa_shared_id' => (int) $row['moa_shared_id'],
             'user_id' => (int) $row['user_id'],
+            'input_source' => $row['input_source'],
             'account_no' => $row['account_no'],
             'share_percentage' => (float) $row['share_percentage'],
-            'due_date_from' => $row['due_date_from'],
-            'due_date_to' => $row['due_date_to'],
+            'due_date' => $row['due_date'],
             'ref_no' => $row['ref_no'],
             'payee' => $row['payee'],
             'particulars' => $row['particulars'],
@@ -233,6 +234,85 @@ try {
         ];
     }
 
+    $revenueParams = [$moaId];
+    $revenueSql = "
+        SELECT
+            r.id,
+            r.moa_shared_id,
+            r.account_no,
+            r.user_id,
+            r.input_source,
+            r.due_date,
+            r.due_date_from,
+            r.due_date_to,
+            r.ref_no,
+            r.payee,
+            r.particulars,
+            r.amount,
+            r.date_created,
+
+            ms.moa_id,
+            ms.location_id,
+            ms.share_percentage
+
+        FROM moa_unai_revenue r
+        INNER JOIN moa_share ms
+            ON ms.id = r.moa_shared_id
+        WHERE ms.moa_id = ?
+          AND r.input_source = 'JV'
+    ";
+
+    if (!$isAdmin) {
+        if (empty($allowedLocations)) {
+            $revenueSql .= " AND 1 = 0";
+        } else {
+            $placeholders = implode(',', array_fill(0, count($allowedLocations), '?'));
+            $revenueSql .= " AND ms.location_id IN ($placeholders)";
+            $revenueParams = array_merge($revenueParams, $allowedLocations);
+        }
+
+        $revenueSql .= " AND r.user_id = ?";
+        $revenueParams[] = $user['id'];
+    }
+
+    $revenueSql .= " ORDER BY ms.location_id ASC, r.account_no ASC, r.date_created ASC, r.id ASC";
+
+    $stmt = $db->prepare($revenueSql);
+    $stmt->execute($revenueParams);
+    $revenueRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $jvManualRevenue = [];
+
+    foreach ($revenueRows as $row) {
+        $locId = (int) $row['location_id'];
+        $accountNo = (string) ($row['account_no'] ?? '');
+
+        if (!isset($jvManualRevenue[$locId])) {
+            $jvManualRevenue[$locId] = [];
+        }
+
+        if (!isset($jvManualRevenue[$locId][$accountNo])) {
+            $jvManualRevenue[$locId][$accountNo] = [];
+        }
+
+        $jvManualRevenue[$locId][$accountNo][] = [
+            'id' => (int) $row['id'],
+            'moa_shared_id' => (int) $row['moa_shared_id'],
+            'location_id' => $locId,
+            'account_no' => $row['account_no'],
+            'user_id' => (int) $row['user_id'],
+            'due_date' => $row['due_date'],
+            'due_date_from' => $row['due_date_from'],
+            'due_date_to' => $row['due_date_to'],
+            'ref_no' => $row['ref_no'],
+            'payee' => $row['payee'],
+            'particulars' => $row['particulars'],
+            'amount' => (float) $row['amount'],
+            'date_created' => $row['date_created'],
+            'input_source' => $row['input_source'],
+        ];
+    }
+
     echo json_encode([
         'data' => [
             'moa' => [
@@ -243,6 +323,7 @@ try {
             'locations' => array_values($locations),
             'categories' => [],
             'expenses' => $expenses,
+            'jv_manual_revenue' => $jvManualRevenue,
             'allowed_locations' => $allowedLocations,
         ],
     ]);

@@ -53,3 +53,16 @@ function require_admin(PDO $db): array
 
     return $user;
 }
+
+function require_jv(PDO $db): array
+{
+    $user = require_auth($db);
+
+    if ((int) $user['role_id'] !== 3) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+        exit;
+    }
+
+    return $user;
+}

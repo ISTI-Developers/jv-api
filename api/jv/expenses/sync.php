@@ -9,7 +9,7 @@ header('Content-Type: application/json');
 
 try {
     $db = Database::connect();
-    $user = require_auth($db);
+    $user = require_jv($db);
     $input = json_decode(file_get_contents('php://input'), true);
 
     if (
@@ -24,7 +24,6 @@ try {
 
     $moaId = (int) $input['moa_id'];
     $expenses = $input['expenses'];
-    $isAdmin = in_array((int) $user['role_id'], [1, 2], true);
 
     if ($moaId <= 0) {
         http_response_code(400);
@@ -34,30 +33,17 @@ try {
 
     $db->beginTransaction();
 
-    if ($isAdmin) {
-        $stmt = $db->prepare("
-            SELECT ms.id, ms.location_id, l.structure_id
-            FROM moa_share ms
-            INNER JOIN moa_locations l
-                ON l.id = ms.location_id
-               AND l.moa_id = ms.moa_id
-               AND l.soft_deleted = 0
-            WHERE ms.moa_id = ?
-        ");
-        $stmt->execute([$moaId]);
-    } else {
-        $stmt = $db->prepare("
-            SELECT ms.id, ms.location_id, l.structure_id
-            FROM moa_share ms
-            INNER JOIN moa_locations l
-                ON l.id = ms.location_id
-               AND l.moa_id = ms.moa_id
-               AND l.soft_deleted = 0
-            WHERE ms.moa_id = ?
-              AND ms.user_id = ?
-        ");
-        $stmt->execute([$moaId, $user['id']]);
-    }
+    $stmt = $db->prepare("
+        SELECT ms.id, ms.location_id, l.structure_id
+        FROM moa_share ms
+        INNER JOIN moa_locations l
+            ON l.id = ms.location_id
+           AND l.moa_id = ms.moa_id
+           AND l.soft_deleted = 0
+        WHERE ms.moa_id = ?
+          AND ms.user_id = ?
+    ");
+    $stmt->execute([$moaId, $user['id']]);
 
     $shareRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -83,58 +69,32 @@ try {
 
     $placeholders = implode(',', array_fill(0, count($allowedShareIds), '?'));
 
-    if ($isAdmin) {
-        $stmt = $db->prepare("
-            SELECT
-                e.id,
-                e.moa_shared_id,
-                e.account_no,
-                e.user_id,
-                e.due_date_from,
-                e.due_date_to,
-                e.ref_no,
-                e.payee,
-                e.particulars,
-                e.amount,
-                ms.moa_id,
-                ms.location_id,
-                l.structure_id
-            FROM moa_jv_expenses e
-            INNER JOIN moa_share ms
-                ON ms.id = e.moa_shared_id
-            LEFT JOIN moa_locations l
-                ON l.id = ms.location_id
-               AND l.moa_id = ms.moa_id
-            WHERE e.moa_shared_id IN ($placeholders)
-        ");
-        $stmt->execute($allowedShareIds);
-    } else {
-        $stmt = $db->prepare("
-            SELECT
-                e.id,
-                e.moa_shared_id,
-                e.account_no,
-                e.user_id,
-                e.due_date_from,
-                e.due_date_to,
-                e.ref_no,
-                e.payee,
-                e.particulars,
-                e.amount,
-                ms.moa_id,
-                ms.location_id,
-                l.structure_id
-            FROM moa_jv_expenses e
-            INNER JOIN moa_share ms
-                ON ms.id = e.moa_shared_id
-            LEFT JOIN moa_locations l
-                ON l.id = ms.location_id
-               AND l.moa_id = ms.moa_id
-            WHERE e.moa_shared_id IN ($placeholders)
-              AND e.user_id = ?
-        ");
-        $stmt->execute([...$allowedShareIds, $user['id']]);
-    }
+    $stmt = $db->prepare("
+        SELECT
+            e.id,
+            e.moa_shared_id,
+            e.account_no,
+            e.user_id,
+            e.input_source,
+            e.due_date,
+            e.ref_no,
+            e.payee,
+            e.particulars,
+            e.amount,
+            ms.moa_id,
+            ms.location_id,
+            l.structure_id
+        FROM moa_jv_expenses e
+        INNER JOIN moa_share ms
+            ON ms.id = e.moa_shared_id
+        LEFT JOIN moa_locations l
+            ON l.id = ms.location_id
+           AND l.moa_id = ms.moa_id
+        WHERE e.moa_shared_id IN ($placeholders)
+          AND e.user_id = ?
+          AND e.input_source = 'JV'
+    ");
+    $stmt->execute([...$allowedShareIds, $user['id']]);
 
     $existingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -154,8 +114,8 @@ try {
             'structure_id' => $row['structure_id'],
             'account_no' => $row['account_no'],
             'user_id' => (int) $row['user_id'],
-            'due_date_from' => $row['due_date_from'],
-            'due_date_to' => $row['due_date_to'],
+            'input_source' => $row['input_source'],
+            'due_date' => $row['due_date'],
             'ref_no' => $row['ref_no'],
             'payee' => $row['payee'],
             'particulars' => $row['particulars'],
@@ -170,45 +130,29 @@ try {
             moa_shared_id,
             account_no,
             user_id,
-            due_date_from,
-            due_date_to,
+            input_source,
+            due_date,
             ref_no,
             payee,
             particulars,
             amount
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, 'JV', ?, ?, ?, ?)
     ");
 
-    if ($isAdmin) {
-        $updateStmt = $db->prepare("
-            UPDATE moa_jv_expenses
-            SET
-                moa_shared_id = ?,
-                account_no = ?,
-                due_date_from = ?,
-                due_date_to = ?,
-                ref_no = ?,
-                payee = ?,
-                particulars = ?,
-                amount = ?
-            WHERE id = ?
-        ");
-    } else {
-        $updateStmt = $db->prepare("
-            UPDATE moa_jv_expenses
-            SET
-                moa_shared_id = ?,
-                account_no = ?,
-                due_date_from = ?,
-                due_date_to = ?,
-                ref_no = ?,
-                payee = ?,
-                particulars = ?,
-                amount = ?
-            WHERE id = ?
-              AND user_id = ?
-        ");
-    }
+    $updateStmt = $db->prepare("
+        UPDATE moa_jv_expenses
+        SET
+            moa_shared_id = ?,
+            account_no = ?,
+            due_date = ?,
+            ref_no = ?,
+            payee = ?,
+            particulars = ?,
+            amount = ?
+        WHERE id = ?
+          AND user_id = ?
+          AND input_source = 'JV'
+    ");
 
     $insertedIds = [];
     $updatedIds = [];
@@ -224,6 +168,7 @@ try {
             !isset($exp['location_id']) ||
             !isset($exp['account_no']) ||
             !isset($exp['amount']) ||
+            !isset($exp['due_date']) ||
             !isset($exp['ref_no']) ||
             !isset($exp['payee'])
         ) {
@@ -237,8 +182,7 @@ try {
         $refNo = trim((string) $exp['ref_no']);
         $payee = trim((string) $exp['payee']);
         $particulars = trim((string) ($exp['particulars'] ?? $exp['name'] ?? ''));
-        $dueDateFrom = !empty($exp['due_date_from']) ? $exp['due_date_from'] : (!empty($exp['date']) ? $exp['date'] : null);
-        $dueDateTo = !empty($exp['due_date_to']) ? $exp['due_date_to'] : null;
+        $dueDate = trim((string) $exp['due_date']);
 
         if ($locationId <= 0) {
             throw new Exception('Invalid location');
@@ -248,7 +192,7 @@ try {
             throw new Exception("No moa_share found for location ID {$locationId} under this MOA");
         }
 
-        if ($accountNo === '' || $amount <= 0 || $refNo === '' || $payee === '') {
+        if ($accountNo === '' || $amount <= 0 || $dueDate === '' || $refNo === '' || $payee === '') {
             throw new Exception('Missing required expense fields');
         }
 
@@ -261,32 +205,17 @@ try {
 
             $incomingIds[] = $id;
 
-            if ($isAdmin) {
-                $updateStmt->execute([
-                    $moaShareId,
-                    $accountNo,
-                    $dueDateFrom,
-                    $dueDateTo,
-                    $refNo,
-                    $payee,
-                    $particulars !== '' ? $particulars : null,
-                    $amount,
-                    $id,
-                ]);
-            } else {
-                $updateStmt->execute([
-                    $moaShareId,
-                    $accountNo,
-                    $dueDateFrom,
-                    $dueDateTo,
-                    $refNo,
-                    $payee,
-                    $particulars !== '' ? $particulars : null,
-                    $amount,
-                    $id,
-                    $user['id'],
-                ]);
-            }
+            $updateStmt->execute([
+                $moaShareId,
+                $accountNo,
+                $dueDate,
+                $refNo,
+                $payee,
+                $particulars !== '' ? $particulars : null,
+                $amount,
+                $id,
+                $user['id'],
+            ]);
 
             $updatedIds[] = $id;
             $updatedDetails[] = [
@@ -300,8 +229,8 @@ try {
                     'structure_id' => $structureByLocation[$locationId] ?? null,
                     'account_no' => $accountNo,
                     'user_id' => (int) ($existingDetails[$id]['user_id'] ?? $user['id']),
-                    'due_date_from' => $dueDateFrom,
-                    'due_date_to' => $dueDateTo,
+                    'input_source' => 'JV',
+                    'due_date' => $dueDate,
                     'ref_no' => $refNo,
                     'payee' => $payee,
                     'particulars' => $particulars !== '' ? $particulars : null,
@@ -313,8 +242,7 @@ try {
                 $moaShareId,
                 $accountNo,
                 $user['id'],
-                $dueDateFrom,
-                $dueDateTo,
+                $dueDate,
                 $refNo,
                 $payee,
                 $particulars !== '' ? $particulars : null,
@@ -331,8 +259,8 @@ try {
                 'structure_id' => $structureByLocation[$locationId] ?? null,
                 'account_no' => $accountNo,
                 'user_id' => (int) $user['id'],
-                'due_date_from' => $dueDateFrom,
-                'due_date_to' => $dueDateTo,
+                'input_source' => 'JV',
+                'due_date' => $dueDate,
                 'ref_no' => $refNo,
                 'payee' => $payee,
                 'particulars' => $particulars !== '' ? $particulars : null,
@@ -349,20 +277,13 @@ try {
     if (!empty($toDelete)) {
         $deletePlaceholders = implode(',', array_fill(0, count($toDelete), '?'));
 
-        if ($isAdmin) {
-            $deleteStmt = $db->prepare("
-                DELETE FROM moa_jv_expenses
-                WHERE id IN ($deletePlaceholders)
-            ");
-            $deleteStmt->execute(array_values($toDelete));
-        } else {
-            $deleteStmt = $db->prepare("
-                DELETE FROM moa_jv_expenses
-                WHERE id IN ($deletePlaceholders)
-                  AND user_id = ?
-            ");
-            $deleteStmt->execute([...array_values($toDelete), $user['id']]);
-        }
+        $deleteStmt = $db->prepare("
+            DELETE FROM moa_jv_expenses
+            WHERE id IN ($deletePlaceholders)
+              AND user_id = ?
+              AND input_source = 'JV'
+        ");
+        $deleteStmt->execute([...array_values($toDelete), $user['id']]);
 
         $deletedIds = array_values(array_map('intval', $toDelete));
         foreach ($deletedIds as $deletedId) {
@@ -385,7 +306,7 @@ try {
             'description' => 'JV expense rows synced',
             'metadata' => [
                 'moa_id' => $moaId,
-                'is_admin_sync' => $isAdmin,
+                'input_source' => 'JV',
                 'inserted' => count($insertedIds),
                 'updated' => count(array_unique($updatedIds)),
                 'deleted' => count($deletedIds),
@@ -417,7 +338,7 @@ try {
             null,
             [
                 'moa_id' => $moaId,
-                'is_admin_sync' => $isAdmin,
+                'input_source' => 'JV',
                 'inserted' => count($insertedIds),
                 'updated' => count(array_unique($updatedIds)),
                 'deleted' => count($deletedIds),

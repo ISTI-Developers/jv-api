@@ -9,7 +9,7 @@ header('Content-Type: application/json');
 
 try {
     $db = Database::connect();
-    $user = require_auth($db);
+    $user = require_jv($db);
     $input = json_decode(file_get_contents('php://input'), true);
 
     if (
@@ -58,14 +58,14 @@ try {
             moa_shared_id,
             account_no,
             user_id,
-            due_date_from,
-            due_date_to,
+            input_source,
+            due_date,
             ref_no,
             payee,
             particulars,
             amount
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, 'JV', ?, ?, ?, ?)
     ");
 
     $inserted = 0;
@@ -79,6 +79,7 @@ try {
             !isset($exp['location_id']) ||
             !isset($exp['account_no']) ||
             !isset($exp['amount']) ||
+            !isset($exp['due_date']) ||
             !isset($exp['ref_no']) ||
             !isset($exp['payee'])
         ) {
@@ -91,14 +92,14 @@ try {
         $refNo = trim((string) $exp['ref_no']);
         $payee = trim((string) $exp['payee']);
         $particulars = trim((string) ($exp['particulars'] ?? $exp['name'] ?? ''));
-        $dueDateFrom = !empty($exp['due_date_from']) ? $exp['due_date_from'] : (!empty($exp['date']) ? $exp['date'] : null);
-        $dueDateTo = !empty($exp['due_date_to']) ? $exp['due_date_to'] : null;
+        $dueDate = trim((string) $exp['due_date']);
 
         if (
             $locationId <= 0 ||
             !isset($shareByLocation[$locationId]) ||
             $accountNo === '' ||
             $amount <= 0 ||
+            $dueDate === '' ||
             $refNo === '' ||
             $payee === ''
         ) {
@@ -109,8 +110,7 @@ try {
             $shareByLocation[$locationId],
             $accountNo,
             $user['id'],
-            $dueDateFrom,
-            $dueDateTo,
+            $dueDate,
             $refNo,
             $payee,
             $particulars !== '' ? $particulars : null,
@@ -130,12 +130,12 @@ try {
             'location_id' => $locationId,
             'structure_id' => $structureByLocation[$locationId] ?? null,
             'account_no' => $accountNo,
+            'input_source' => 'JV',
             'amount' => $amount,
             'ref_no' => $refNo,
             'payee' => $payee,
             'particulars' => $particulars !== '' ? $particulars : null,
-            'due_date_from' => $dueDateFrom,
-            'due_date_to' => $dueDateTo,
+            'due_date' => $dueDate,
         ];
     }
 

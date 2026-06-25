@@ -117,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 try {
     $db = Database::connect();
-    $user = require_auth($db);
+    $user = require_admin($db);
 
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -160,6 +160,7 @@ try {
         'due_date_from' => null,
         'due_date_to' => null,
         'structure_id' => null,
+        'lease_contract_id' => null,
         'amount' => null,
         'remarks' => null,
         'group_name' => null,
@@ -256,6 +257,8 @@ try {
             ? trim((string) $row['cStructureID'])
             : null;
 
+        $leaseContractId = nullableTrim($row, 'cLeaseContractID') ?? nullableTrim($row, 'cleaseContractID');
+
         $groupName = !empty($row['cGroupName'])
             ? trim((string) $row['cGroupName'])
             : null;
@@ -271,6 +274,7 @@ try {
             'due_date_from' => $dueDateFrom,
             'due_date_to' => $dueDateTo,
             'structure_id' => $structureId,
+            'lease_contract_id' => $leaseContractId,
             'amount' => (float) $amount,
             'remarks' => $remarks,
             'group_name' => $groupName,
@@ -289,7 +293,7 @@ try {
             'source_department' => nullableTrim($row, 'cDepartment'),
             'source_employee_id' => nullableTrim($row, 'cEmpID'),
             'source_employee_name' => nullableTrim($row, 'cEmpName'),
-            'source_lease_contract_id' => nullableTrim($row, 'cleaseContractID'),
+            'source_lease_contract_id' => $leaseContractId,
             'source_main_ref' => nullableTrim($row, 'cMainRef'),
             'source_ref_type' => nullableTrim($row, 'cRefType'),
             'source_site_owner_name' => nullableTrim($row, 'cSiteOwnerName'),

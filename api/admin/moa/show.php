@@ -112,6 +112,8 @@ try {
             e.moa_shared_id,
             e.account_no,
             e.user_id,
+            e.input_source,
+            e.due_date,
             e.due_date_from,
             e.due_date_to,
             e.ref_no,
@@ -143,26 +145,137 @@ try {
     $expenseRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $expenses = [];
+    $unaiManualExpenses = [];
+    $manualExpenses = [
+        'JV' => [],
+        'UNAI' => [],
+    ];
 
     foreach ($expenseRows as $row) {
         $locationId = (int) $row['location_id'];
         $accountNo = (string) ($row['account_no'] ?? '');
+        $inputSource = $row['input_source'] === 'UNAI' ? 'UNAI' : 'JV';
 
-        if (!isset($expenses[$locationId])) {
-            $expenses[$locationId] = [];
-        }
-
-        if (!isset($expenses[$locationId][$accountNo])) {
-            $expenses[$locationId][$accountNo] = [];
-        }
-
-        $expenses[$locationId][$accountNo][] = [
+        $expense = [
             'id' => (int) $row['id'],
             'moa_shared_id' => (int) $row['moa_shared_id'],
             'account_no' => $row['account_no'],
             'user_id' => (int) $row['user_id'],
+            'input_source' => $inputSource,
             'location_id' => $locationId,
             'share_percentage' => (float) $row['share_percentage'],
+            'due_date' => $row['due_date'],
+            'due_date_from' => $row['due_date_from'],
+            'due_date_to' => $row['due_date_to'],
+            'ref_no' => $row['ref_no'],
+            'payee' => $row['payee'],
+            'particulars' => $row['particulars'],
+            'amount' => (float) $row['amount'],
+            'date_created' => $row['date_created'],
+            'user' => [
+                'id' => (int) $row['user_id'],
+                'email' => $row['email'],
+                'first_name' => $row['first_name'],
+                'last_name' => $row['last_name'],
+                'company_name' => $row['company_name'],
+            ],
+        ];
+
+        if (!isset($manualExpenses[$inputSource][$locationId])) {
+            $manualExpenses[$inputSource][$locationId] = [];
+        }
+
+        if (!isset($manualExpenses[$inputSource][$locationId][$accountNo])) {
+            $manualExpenses[$inputSource][$locationId][$accountNo] = [];
+        }
+
+        $manualExpenses[$inputSource][$locationId][$accountNo][] = $expense;
+
+        if ($inputSource === 'JV') {
+            if (!isset($expenses[$locationId])) {
+                $expenses[$locationId] = [];
+            }
+
+            if (!isset($expenses[$locationId][$accountNo])) {
+                $expenses[$locationId][$accountNo] = [];
+            }
+
+            $expenses[$locationId][$accountNo][] = $expense;
+        } else {
+            if (!isset($unaiManualExpenses[$locationId])) {
+                $unaiManualExpenses[$locationId] = [];
+            }
+
+            if (!isset($unaiManualExpenses[$locationId][$accountNo])) {
+                $unaiManualExpenses[$locationId][$accountNo] = [];
+            }
+
+            $unaiManualExpenses[$locationId][$accountNo][] = $expense;
+        }
+    }
+
+    $stmt = $db->prepare("
+        SELECT
+            r.id,
+            r.moa_shared_id,
+            r.account_no,
+            r.user_id,
+            r.input_source,
+            r.due_date,
+            r.due_date_from,
+            r.due_date_to,
+            r.ref_no,
+            r.payee,
+            r.particulars,
+            r.amount,
+            r.date_created,
+
+            ms.moa_id,
+            ms.location_id,
+            ms.share_percentage,
+
+            u.email,
+            up.first_name,
+            up.last_name,
+            up.company_name
+
+        FROM moa_unai_revenue r
+        INNER JOIN moa_share ms
+            ON ms.id = r.moa_shared_id
+        LEFT JOIN users u
+            ON u.id = r.user_id
+        LEFT JOIN user_profiles up
+            ON up.user_id = u.id
+        WHERE ms.moa_id = ?
+          AND r.input_source = 'UNAI'
+        ORDER BY ms.location_id ASC, r.date_created DESC, r.id DESC
+    ");
+    $stmt->execute([$moaId]);
+    $revenueRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $unaiManualRevenue = [];
+
+    foreach ($revenueRows as $row) {
+        $locationId = (int) $row['location_id'];
+        $accountNo = (string) ($row['account_no'] ?? '');
+
+        if (!isset($unaiManualRevenue[$locationId])) {
+            $unaiManualRevenue[$locationId] = [];
+        }
+
+        if (!isset($unaiManualRevenue[$locationId][$accountNo])) {
+            $unaiManualRevenue[$locationId][$accountNo] = [];
+        }
+
+        $unaiManualRevenue[$locationId][$accountNo][] = [
+            'id' => (int) $row['id'],
+            'moa_shared_id' => (int) $row['moa_shared_id'],
+            'account_no' => $row['account_no'],
+            'user_id' => (int) $row['user_id'],
+            'input_source' => $row['input_source'],
+            'location_id' => $locationId,
+            'share_percentage' => (float) $row['share_percentage'],
+            'due_date' => $row['due_date'],
             'due_date_from' => $row['due_date_from'],
             'due_date_to' => $row['due_date_to'],
             'ref_no' => $row['ref_no'],
@@ -188,6 +301,9 @@ try {
         ],
         'locations' => array_values($locations),
         'expenses' => $expenses,
+        'manual_expenses' => $manualExpenses,
+        'unai_manual_expenses' => $unaiManualExpenses,
+        'unai_manual_revenue' => $unaiManualRevenue,
     ]);
 } catch (Throwable $e) {
     http_response_code(500);
